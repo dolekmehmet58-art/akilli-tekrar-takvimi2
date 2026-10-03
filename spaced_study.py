@@ -42,7 +42,7 @@ def get_ai_tutor_response(prompt_text):
         client = genai.Client(api_key=api_key)
         
         # Denenecek modeller sırasıyla
-        models_to_try = ["gemini-1.5-flash", "gemini-2.0-flash"]
+        models_to_try = ["gemini-1.5-flash", "gemini-3.5-flash"]
         
         for model_name in models_to_try:
             try:

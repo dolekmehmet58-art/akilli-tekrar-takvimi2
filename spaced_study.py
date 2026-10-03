@@ -33,21 +33,33 @@ def save_users_db(data):
 # 2. GEMINI YAPAY ZEKA ENTEGRASYONU
 # ==========================================
 def get_ai_tutor_response(prompt_text):
-    """Gemini API kullanarak yapay zeka yanıtı üretir."""
+    """Gemini API kullanarak yapay zeka yanıtı üretir (Yedek modüllü)."""
     api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return "⚠️ Gemini API Anahtarı bulunamadı! Lütfen Streamlit Secrets ayarlarına GEMINI_API_KEY ekleyin."
     
     try:
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt_text,
-        )
-        return response.text
+        
+        # Denenecek modeller sırasıyla
+        models_to_try = ["gemini-1.5-flash", "gemini-2.0-flash"]
+        
+        for model_name in models_to_try:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt_text,
+                )
+                return response.text
+            except Exception as inner_error:
+                # Eğer ilk model yoğunsa bir sonrakini dene
+                continue
+                
+        return "⚠️ Sunuculardaki yoğunluk nedeniyle şu an yanıt üretilemedi. Lütfen birkaç saniye sonra tekrar deneyin."
+        
     except Exception as e:
         return f"Yapay zeka ile iletişim kurulurken bir hata oluştu: {str(e)}"
-
+        
 # ==========================================
 # 3. SAYFA AYARLARI VE OTURUM KONTROLÜ
 # ==========================================

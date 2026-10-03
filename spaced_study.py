@@ -3,6 +3,7 @@ import datetime
 import json
 import hashlib
 import os
+from google import genai
 
 # ==========================================
 # 1. VERİTABANI VE ŞİFRELEME FONKSİYONLARI
@@ -10,15 +11,12 @@ import os
 USERS_DB_FILE = "users_db.json"
 
 def make_hash(password):
-    """Şifreyi güvenli SHA-256 formatına dönüştürür."""
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
 def check_hash(password, hashed_text):
-    """Girilen şifrenin doğruluğunu kontrol eder."""
     return make_hash(password) == hashed_text
 
 def load_users_db():
-    """Kullanıcı veritabanını JSON dosyasından okur."""
     if os.path.exists(USERS_DB_FILE):
         try:
             with open(USERS_DB_FILE, "r", encoding="utf-8") as f:
@@ -28,15 +26,33 @@ def load_users_db():
     return {}
 
 def save_users_db(data):
-    """Güncellenmiş verileri JSON dosyasına kaydeder."""
     with open(USERS_DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 # ==========================================
-# 2. SAYFA AYARLARI VE OTURUM KONTROLÜ
+# 2. GEMINI YAPAY ZEKA ENTEGRASYONU
+# ==========================================
+def get_ai_tutor_response(prompt_text):
+    """Gemini API kullanarak yapay zeka yanıtı üretir."""
+    api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return "⚠️ Gemini API Anahtarı bulunamadı! Lütfen Streamlit Secrets ayarlarına GEMINI_API_KEY ekleyin."
+    
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt_text,
+        )
+        return response.text
+    except Exception as e:
+        return f"Yapay zeka ile iletişim kurulurken bir hata oluştu: {str(e)}"
+
+# ==========================================
+# 3. SAYFA AYARLARI VE OTURUM KONTROLÜ
 # ==========================================
 st.set_page_config(
-    page_title="Akıllı Tekrar Takvimi",
+    page_title="Akıllı Tekrar & AI Çalışma Takvimi",
     page_icon="📚",
     layout="wide"
 )
@@ -47,9 +63,11 @@ if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 if "username" not in st.session_state:
     st.session_state["username"] = ""
+if "selected_study_topic" not in st.session_state:
+    st.session_state["selected_study_topic"] = ""
 
 # ==========================================
-# 3. GİRİŞ VE KAYIT EKRANI
+# 4. GİRİŞ VE KAYIT EKRANI
 # ==========================================
 if not st.session_state["logged_in"]:
     st.title("📚 Akıllı Ders Çalışma Takvimi")
@@ -88,7 +106,7 @@ if not st.session_state["logged_in"]:
                 st.warning("Lütfen hem kullanıcı adı hem de şifre giriniz.")
 
 # ==========================================
-# 4. GİRİŞ YAPILMIŞ ANA UYGULAMA EKRANI
+# 5. GİRİŞ YAPILMIŞ ANA UYGULAMA EKRANI
 # ==========================================
 else:
     current_user = st.session_state["username"]
@@ -98,7 +116,7 @@ else:
 
     col_title, col_logout = st.columns([4, 1])
     with col_title:
-        st.title("📚 Aralıklı Tekrar (Spaced Repetition) Takvimi")
+        st.title("📚 Aralıklı Tekrar & AI Destekli Çalışma Paneli")
         st.caption(f"Aktif Öğrenci Hesabı: **{current_user}** | Ebbinghaus Unutma Eğrisi")
     with col_logout:
         st.write("")
@@ -109,11 +127,12 @@ else:
 
     st.divider()
 
+    # YAN PANEL: DERS EKLEME
     st.sidebar.header("➕ Yeni Konu Çalışması Ekle")
 
     with st.sidebar.form("add_topic_form"):
         course_name = st.selectbox("Ders Seçin:", ["Matematik", "Fizik", "Kimya", "Biyoloji", "Türkçe", "Tarih", "Coğrafya"])
-        topic_title = st.text_input("Konu Adı:", placeholder="Örn: İkinci Dereceden Denklemler")
+        topic_title = st.text_input("Konu Adı:", placeholder="Örn: Türev Alma Kuralları")
         difficulty = st.select_slider(
             "Konu Zorluk / Anlama Düzeyi:",
             options=["Zor (Çok Unutulabilir)", "Orta (Normal)", "Kolay (İyi Anlaşıldı)"]
@@ -151,7 +170,8 @@ else:
 
     st.divider()
 
-    tab1, tab2 = st.tabs(["🔔 Bugünün Tekrar Görevleri", "📋 Tüm Çalışma Geçmişi"])
+    # TEKRAR LİSTESİ VE AI ÖĞRETMEN SEKMELERİ
+    tab1, tab2, tab3 = st.tabs(["🔔 Bugünün Tekrar Görevleri", "🤖 AI Özel Öğretmen", "📋 Tüm Çalışma Geçmişi"])
 
     with tab1:
         st.subheader("🔔 Bugün Tamamlanması Gereken Tekrarlar")
@@ -163,7 +183,7 @@ else:
                     st.write(f"**Ekleme Tarihi:** {item['added_date']} | **Tekrar Sayısı:** {item['review_count']}")
                     st.write(f"**Son Değerlendirme:** {item['difficulty']}")
                     
-                    b1, b2, b3 = st.columns(3)
+                    b1, b2, b3, b4 = st.columns(4)
                     if b1.button("🔴 Zorlandım (1 Gün)", key=f"hard_{item['id']}"):
                         item['interval_days'] = 1
                         item['next_review'] = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
@@ -191,7 +211,44 @@ else:
                         save_users_db(db)
                         st.rerun()
 
+                    if b4.button("🤖 AI ile Konuyu Çalış", key=f"ai_study_{item['id']}"):
+                        st.session_state["selected_study_topic"] = f"{item['course']} - {item['topic']}"
+                        st.rerun()
+
     with tab2:
+        st.subheader("🤖 Yapay Zeka (Gemini) Özel Öğretmeni")
+        st.write("Zorlandığın konuyu seç veya yaz; yapay zeka sana konunun özünü anlatsın, kritik püf noktaları versin ve kendini test etmen için pratik sorular sorsun.")
+
+        default_topic = st.session_state.get("selected_study_topic", "")
+        study_input = st.text_input("Çalışmak İstediğin Ders / Konu:", value=default_topic, placeholder="Örn: Matematik - Türev Alma Kuralları")
+
+        study_mode = st.radio(
+            "Nasıl Bir Destek İstersin?",
+            ["💡 Konu Özeti ve Püf Noktalar", "❓ Örnek Soru ve Çözümleri", "🎯 Hızlı Kavrama Testi (3 Soru)"],
+            horizontal=True
+        )
+
+        if st.button("🚀 Yapay Zeka ile Çalışmayı Başlat"):
+            if study_input:
+                with st.spinner("Yapay zeka öğretmenin özel ders notunu hazırlıyor..."):
+                    prompt = f"""
+                    Sen lise öğrencilerine ders anlatan çok samimi, motive edici ve harika bir özel öğretmensin.
+                    Öğrenci senden şu konu hakkında destek istiyor: '{study_input}'.
+                    İstenen mod: '{study_mode}'.
+
+                    Lütfen cevabında:
+                    - Gereksiz uzun anlatımlardan kaçın.
+                    - Formül veya mantığı anlaşılır biçimde açıkla.
+                    - Öğrencinin aklında kalacak pratik bir ipucu ver.
+                    - Samimi ve cesaret verici bir dil kullan.
+                    """
+                    ai_response = get_ai_tutor_response(prompt)
+                    st.markdown("---")
+                    st.markdown(ai_response)
+            else:
+                st.warning("Lütfen önce çalışmak istediğin bir konu girin!")
+
+    with tab3:
         st.subheader("📋 Tüm Konular ve Gelecek Tekrar Tarihleri")
         if topics:
             table_data = [{
